@@ -120,5 +120,8 @@ class TokenBucket:
         """
         t = time.monotonic()
         delta = t - self._last_add
+        if delta < self.interval:
+            return
+
         self.level = min(self.capacity, self.level + delta * self.rate)
         self._last_add = t
