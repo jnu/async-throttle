@@ -93,3 +93,13 @@ class Throttle:
     async def __aexit__(self, exc_t, exc_v, exc_tb):
         """Exit the async context."""
         self.release()
+
+    @property
+    def capacity(self) -> float:
+        """Return the current capacity."""
+        return self.bucket.capacity
+
+    @property
+    def level(self) -> float:
+        """Return the current level."""
+        return self.bucket.level
