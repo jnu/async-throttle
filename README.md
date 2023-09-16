@@ -8,10 +8,10 @@ Multipurpose concurrency primitive for `asyncio` coroutines.
 This throttle is configured with two related, but different parameters:
 
 ```py
-Throttle(rate: float, concurrency: int)
+Throttle(capacity: float, concurrency: int = 0, period: float = 1.0)
 ```
 
-`rate` - The **rate limit** (in operations-per-second) for tasks.
+`capacity` - Sets the **rate limit** for requests, as `capacity` per `period` seconds.
 
 `concurrency` - The number of jobs that can be executing at a given time.
 
@@ -31,8 +31,13 @@ In fact, it's really just an `asyncio.Semaphore` (which handles the `concurrency
 ```py
 throttle = Throttle(10, 2)  # Two concurrent coros limited to 10qps (total).
 
+# Perform one task when the budget allows
 async with throttle:
     # Do some (async) thing
+
+# For tasks that should consume more of the budget, you can call the throttle:
+async with throttle(5):
+    # Do some more expensive thing, equivalent to 5 requests
 ```
 
 Like other `asyncio` primitives, `Throttle` is not thread-safe.
