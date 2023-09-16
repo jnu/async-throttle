@@ -6,22 +6,42 @@ from typing import Optional
 class TokenBucket:
     """Rate-limiting async token bucket."""
 
-    def __init__(self, rate: float, capacity: float, interval: float = 0.5):
-        """Create token bucket replenished at `rate` up to `capacity`.
+    def __init__(self,
+                 tokens: float,
+                 capacity: float,
+                 period: float = 1.0,
+                 interval: float = 0.0):
+        """Create token bucket replenished at `tokens/period` up to `capacity`.
+
+        The `interval` argument is how frequently the bucket will be checked
+        for replenishment. This is effectively just a convenience in case you
+        want to keep the units of `period` and `interval` intuitive, but also
+        want the bucket to be continuously replenished. So, if you have a rate
+        of 10 tokens per minute, by default 10 tokens will be added only one
+        time every minute. If you specify an interval of 1 second, then 1 token
+        will be added every 6 seconds.
 
         Args:
-            rate - Number of tokens to replenish (tokens per second)
+            tokens - Number of tokens to replenish
             capacity - Max number of tokens
-            interval - Frequency to replenish tokens
+            period - Time in seconds to add `tokens`
+            interval - Time in seconds to check for replenishment
         """
+        if tokens <= 0:
+            raise ValueError(f"Rate must be positive, got {tokens}")
+        if capacity <= 0:
+            raise ValueError(f"Capacity must be positive, got {capacity}")
+        if period <= 0:
+            raise ValueError(f"Period must be positive, got {period}")
+        if interval < 0:
+            raise ValueError(f"Interval must be non-negative, got {interval}")
         # Current number of tokens
         self.level = capacity
         # Max number of tokens
         self.capacity = capacity
-        # Token replenish rate, per second
-        self.rate = rate
-        # Frequency to replenish
-        self.interval = interval
+        # Token replenish rate
+        self.rate = tokens / period
+        self.interval = interval or period
 
         # Timestamp of last token addition
         self._last_add = time.monotonic()
@@ -38,6 +58,10 @@ class TokenBucket:
         Args:
             n - Number of tokens (can be fractional)
         """
+        if n <= 0:
+            return
+        if n > self.capacity:
+            raise ValueError(f"Requested {n} tokens, but capacity is {self.capacity}")
         while True:
             async with self._cv:
                 # Ensure bucket is topped off
@@ -60,7 +84,9 @@ class TokenBucket:
         """
         if self._timer:
             return
-        self._timer = asyncio.create_task(self._fill_after(self.interval))
+        t_since_last = time.monotonic() - self._last_add
+        next_add = max(0, self.interval - t_since_last)
+        self._timer = asyncio.create_task(self._fill_after(next_add))
 
     async def _fill_after(self, timeout: float):
         """Replenish the token bucket after napping for an interval.
@@ -96,5 +122,3 @@ class TokenBucket:
         delta = t - self._last_add
         self.level = min(self.capacity, self.level + delta * self.rate)
         self._last_add = t
-
-
