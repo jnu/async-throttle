@@ -40,7 +40,7 @@ class Throttle:
     async def __call__(self, n: float = 1.0):
         """Alias for `acquire`."""
         await self.acquire(n)
-        yield
+        yield self
         self.release()
 
     async def acquire(self, n: float = 1.0):
@@ -58,6 +58,16 @@ class Throttle:
             # In theory we might have been asked to sleep again while we were
             # sleeping here, so check again.
             t_now = time.monotonic()
+        await self.bucket.consume(n)
+
+    async def consume(self, n: float):
+        """Consume `n` tokens from the bucket when possible.
+
+        This does *not* consider the concurrency limit.
+
+        Args:
+            n - Number of tokens (can be fractional)
+        """
         await self.bucket.consume(n)
 
     def release(self):

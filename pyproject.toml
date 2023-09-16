@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "async-throttle"
-version = "0.2.2"
+version = "0.2.3"
 description = "Multipurpose asyncio throttle"
 authors = ["Joe Nudell <jnudell@hks.harvard.edu>"]
 license = "MIT"
