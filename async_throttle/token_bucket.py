@@ -1,5 +1,7 @@
 import asyncio
 import time
+import threading
+import contextlib
 from typing import Optional
 
 
@@ -36,7 +38,7 @@ class TokenBucket:
         if interval < 0:
             raise ValueError(f"Interval must be non-negative, got {interval}")
         # Current number of tokens
-        self.level = capacity
+        self._level = capacity
         # Max number of tokens
         self.capacity = capacity
         # Token replenish rate
@@ -47,8 +49,17 @@ class TokenBucket:
         self._last_add = time.monotonic()
         # Synchronization for token requesters
         self._cv = asyncio.Condition()
+        self._lock = threading.Lock()
         # Scheduled replenishment task.
         self._timer: Optional[asyncio.Task] = None
+
+    @property
+    def level(self) -> float:
+        """Current number of tokens."""
+        # Ensure bucket is topped off
+        with self._lock:
+            self._fill()
+        return self._level
 
     async def consume(self, n: float):
         """Take `n` tokens from the bucket.
@@ -65,16 +76,17 @@ class TokenBucket:
         while True:
             async with self._cv:
                 # Ensure bucket is topped off
-                self._fill()
+                with self._lock:
+                    self._fill()
                 # Check if tokens are available
-                if n > self.level:
+                if n > self._level:
                     # Make sure a replenishment task is scheduled
                     self._schedule()
                     # Block indefinitely until woken by a replenishment task
                     await self._cv.wait()
                     continue
                 else:
-                    self.level -= n
+                    self._level -= n
                     return
 
     def _schedule(self):
@@ -97,7 +109,8 @@ class TokenBucket:
         await asyncio.sleep(timeout)
         async with self._cv:
             # Fill up the bucket now
-            self._fill()
+            with self._lock:
+                self._fill()
             # Wake up a few sleeping tasks. Note that the token level is often
             # fractional, so we round it. We also add an extra sleeping
             # coroutine to wake. This guarantees that if there are more tasks
@@ -109,7 +122,7 @@ class TokenBucket:
             # that we are waking even more tasks than we need to. But
             # ultimately they will just go back to sleep and try again on the
             # next replenishment.
-            self._cv.notify(n=int(self.level) + 1)
+            self._cv.notify(n=int(self._level) + 1)
             self._timer = None
 
     def _fill(self):
@@ -123,5 +136,5 @@ class TokenBucket:
         if delta < self.interval:
             return
 
-        self.level = min(self.capacity, self.level + delta * self.rate)
+        self._level = min(self.capacity, self._level + delta * self.rate)
         self._last_add = t
